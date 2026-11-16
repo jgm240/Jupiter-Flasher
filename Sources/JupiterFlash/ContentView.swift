@@ -103,6 +103,10 @@ struct ContentView: View {
                          + (info.needsUEFIFiles ? " UEFI boot files will be added from install.wim." : ""))
                         .font(.caption).foregroundStyle(.secondary)
                 }
+                if info.isWindows8 {
+                    Text("\(info.windowsName ?? "Windows 8") boots from this drive in UEFI or legacy BIOS mode. Windows 8 has its own USB 3.0 drivers, so any port works.")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
                 if info.isLTSCOrIoT {
                     Text(info.isIoT
                          ? "IoT Enterprise (LTSC) editions have relaxed hardware requirements, so the Windows 11 requirement bypass is usually not needed. If Setup still complains, turn it on below."
@@ -129,29 +133,40 @@ struct ContentView: View {
     }
 
     private var checksumView: some View {
-        DisclosureGroup("Check the download (SHA-256)") {
+        DisclosureGroup("Check the download (MD5 / SHA-1 / SHA-256)") {
             VStack(alignment: .leading, spacing: 6) {
-                TextField("Paste the expected SHA-256 from the download page (optional)", text: $m.expectedHash)
+                TextField("Paste the expected hash from the download page (optional)", text: $m.expectedHash)
                     .font(.system(.caption, design: .monospaced))
                 HStack {
+                    Picker("Algorithm", selection: $m.hashAlgorithm) {
+                        ForEach(HashAlgorithm.allCases, id: \.self) { Text($0.displayName).tag($0) }
+                    }
+                    .pickerStyle(.segmented).labelsHidden().frame(maxWidth: 210)
                     Button(m.hashState == .idle ? "Calculate" : "Recalculate") { m.computeHash() }
                         .disabled({ if case .computing = m.hashState { return true } else { return false } }())
                     switch m.hashState {
                     case .idle: EmptyView()
                     case .computing(let f): ProgressView(value: f).frame(maxWidth: 160)
                     case .failed(let e): Text(e).font(.caption).foregroundStyle(.red)
-                    case .done:
+                    case .done(let alg, _):
                         if let ok = m.hashMatches {
                             Label(ok ? "Matches" : "DOES NOT MATCH – don't use this file",
                                   systemImage: ok ? "checkmark.seal.fill" : "xmark.octagon.fill")
                                 .foregroundStyle(ok ? .green : .red).font(.callout)
+                        } else if let want = m.expectedParsed {
+                            Text("The pasted hash is \(want.algorithm.displayName) but this one is \(alg.displayName) – press Recalculate.")
+                                .font(.caption).foregroundStyle(.orange)
                         } else if !m.expectedHash.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                            Text("That doesn't contain exactly one SHA-256 hash.").font(.caption).foregroundStyle(.orange)
+                            Text("That doesn't contain exactly one MD5, SHA-1 or SHA-256 hash.").font(.caption).foregroundStyle(.orange)
                         }
                     }
                 }
-                if case .done(let h) = m.hashState {
-                    Text(h).font(.system(.caption2, design: .monospaced)).textSelection(.enabled)
+                if case .done(let alg, let h) = m.hashState {
+                    Text("\(alg.displayName): \(h)").font(.system(.caption2, design: .monospaced)).textSelection(.enabled)
+                    if alg.isWeak, m.hashMatches == true {
+                        Text("\(alg.displayName) only proves the file isn't corrupted – it can't rule out tampering. Use the SHA-256 when the publisher offers one.")
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
                 }
             }
             .padding(.top, 4)
@@ -263,26 +278,37 @@ struct ContentView: View {
 
     private var customizationSection: some View {
         let region = RegionSettings.current
+        let info = m.isoInfo            // nil until an ISO is read: then show everything
+        let showHW = info?.hasHardwareChecks ?? true
+        let showAccount = info?.hasOnlineAccountScreens ?? true
+        let showBitLocker = info?.hasDeviceEncryption ?? true
+        let effective = info.map { m.customization.applicable(to: $0).options } ?? m.customization
         return Group {
-            Toggle("Remove Windows 11 hardware requirements (TPM, Secure Boot, RAM, CPU)", isOn: $m.customization.bypassHardwareChecks)
-            Toggle("Skip Microsoft account and network setup (local account)", isOn: $m.customization.skipOnlineAccount)
-            if m.customization.skipOnlineAccount {
-                TextField("Local user name (optional)", text: $m.customization.localAccountName)
-                if let problem = m.accountNameProblem {
-                    Label(problem, systemImage: "exclamationmark.triangle.fill").font(.caption).foregroundStyle(.orange)
-                } else {
-                    Text("The account is created without a password – set one after installing.")
-                        .font(.caption).foregroundStyle(.secondary)
+            if showHW { Toggle("Remove Windows 11 hardware requirements (TPM, Secure Boot, RAM, CPU)", isOn: $m.customization.bypassHardwareChecks) }
+            if showAccount {
+                Toggle("Skip Microsoft account and network setup (local account)", isOn: $m.customization.skipOnlineAccount)
+                if m.customization.skipOnlineAccount {
+                    TextField("Local user name (optional)", text: $m.customization.localAccountName)
+                    if let problem = m.accountNameProblem {
+                        Label(problem, systemImage: "exclamationmark.triangle.fill").font(.caption).foregroundStyle(.orange)
+                    } else {
+                        Text("The account is created without a password – set one after installing.")
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
                 }
             }
             Toggle("Skip privacy questions", isOn: $m.customization.skipPrivacyQuestions)
-            Toggle("Don't automatically encrypt the drive with BitLocker", isOn: $m.customization.disableBitLocker)
+            if showBitLocker { Toggle("Don't automatically encrypt the drive with BitLocker", isOn: $m.customization.disableBitLocker) }
             Toggle("Use this Mac's region and time zone", isOn: $m.customization.useMacRegion)
             if m.customization.useMacRegion {
                 Text("Will set: language/region \(region.locale ?? "not mapped, skipped") · time zone \(region.timeZone ?? "not mapped, skipped")")
                     .font(.caption).foregroundStyle(.secondary)
             }
-            if !m.customization.isEmpty {
+            if let info, !(showHW && showAccount && showBitLocker) {
+                Text("Options that don't exist in \(info.windowsName ?? "this Windows") are hidden.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+            if !effective.isEmpty {
                 Text("Saved as autounattend.xml on the drive, which Windows Setup reads automatically.")
                     .font(.caption).foregroundStyle(.secondary)
             }

@@ -34,8 +34,20 @@ public struct ISOInfo: Sendable {
         }
     }
 
-    /// Windows Vista / 7 / 8 era media (NT 6.0–6.1) – boots with bootmgr but predates UEFI media.
+    /// Windows Vista / 7 media (NT 6.0–6.1) – boots with bootmgr but predates UEFI media.
     public var isVistaOr7: Bool { versionMajor == 6 && versionMinor <= 1 }
+    /// Windows 8 / 8.1 media (NT 6.2–6.3).
+    public var isWindows8: Bool { versionMajor == 6 && (versionMinor == 2 || versionMinor == 3) }
+
+    // Which answer-file options mean something for this Windows. When the version couldn't be read
+    // (wimlib missing) everything is allowed, as before.
+    private var versionKnown: Bool { versionMajor > 0 }
+    /// Windows 11's TPM / Secure Boot / RAM / CPU checks (Windows 10 and older have none, but the keys are harmless on 10).
+    public var hasHardwareChecks: Bool { !versionKnown || versionMajor >= 10 }
+    /// Microsoft-account sign-in page in OOBE: Windows 8 and later. Vista/7 have no such page.
+    public var hasOnlineAccountScreens: Bool { !versionKnown || versionMajor >= 10 || (versionMajor == 6 && versionMinor >= 2) }
+    /// Automatic device encryption: Windows 8.1 and later.
+    public var hasDeviceEncryption: Bool { !versionKnown || versionMajor >= 10 || (versionMajor == 6 && versionMinor >= 3) }
 
     /// 64-bit Vista/7 ISOs ship no UEFI boot loader; it can be extracted from install.wim.
     public var needsUEFIFiles: Bool {

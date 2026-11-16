@@ -3,7 +3,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 APP="build/Jupiter Flasher.app"
-VERSION="${VERSION:-1.0.1}"
+VERSION="${VERSION:-1.1.0}"
 
 swift build -c release --product JupiterFlash
 swift build -c release --product jupiterflash-cli

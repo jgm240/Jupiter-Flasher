@@ -69,6 +69,18 @@ public struct WindowsCustomization: Sendable, Equatable, Codable {
         !(bypassHardwareChecks || skipOnlineAccount || skipPrivacyQuestions || disableBitLocker || useMacRegion)
     }
 
+    /// The options that apply to this Windows, plus the names of the ones dropped. Vista/7 setup has no online-account
+    /// page, 8.1 is the first with device encryption, and only Windows 10/11 have hardware checks – writing those
+    /// settings into an older answer file would at best do nothing.
+    public func applicable(to info: ISOInfo) -> (options: WindowsCustomization, dropped: [String]) {
+        var c = self
+        var dropped: [String] = []
+        if c.bypassHardwareChecks, !info.hasHardwareChecks { c.bypassHardwareChecks = false; dropped.append("hardware-check bypass") }
+        if c.skipOnlineAccount, !info.hasOnlineAccountScreens { c.skipOnlineAccount = false; dropped.append("skip online account") }
+        if c.disableBitLocker, !info.hasDeviceEncryption { c.disableBitLocker = false; dropped.append("BitLocker opt-out") }
+        return (c, dropped)
+    }
+
     /// Returns a problem description, or nil when the name is acceptable.
     public static func accountNameProblem(_ name: String) -> String? {
         let n = name.trimmingCharacters(in: .whitespaces)

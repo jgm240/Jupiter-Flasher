@@ -39,8 +39,14 @@ Raw device access needs root on macOS, so DD / Test / Clone ask for your adminis
 * **Legacy BIOS (CSM) boot** – takes Windows' own MBR code and FAT32 boot record from `boot/bootsect.exe` on the ISO.
 * **Customization** – optional `autounattend.xml`: remove Windows 11 TPM / Secure Boot / RAM / CPU checks, skip the
   Microsoft-account and network screens (optionally creating a local user), skip privacy questions, disable automatic
-  BitLocker, reuse this Mac's region and time zone.
-* **Vista / 7** – detected; UEFI boot files are extracted from `install.wim` for 64-bit Windows 7.
+  BitLocker, reuse this Mac's region and time zone. Options are matched to the Windows version: the Windows 11 checks only
+  apply to 10/11, the Microsoft-account page exists from Windows 8, device encryption from 8.1 – on Vista/7 only the
+  privacy and region options are written, and the log says which were skipped.
+* **Vista / 7 / 8 / 8.1** – detected from `install.wim`. 64-bit Vista/7 ISOs have no UEFI boot loader, so it is extracted
+  from `install.wim` (needs wimlib); 8 and 8.1 ship their own. Legacy BIOS boot uses the disc's `bootsect.exe`. Vista/7 have
+  no USB 3.0 drivers – use a USB 2.0 port. Microsoft no longer distributes these versions, so bring your own ISO and check
+  it with the checksum box. Tested with synthetic images (detection, flashing, split `install.swm`, verify); not yet
+  booted from a real Windows 7/8 ISO.
 * **Windows 2000 / XP / 2003** – detected automatically. Legacy BIOS only, MBR scheme. Microsoft's NT5 boot code isn't on
   these discs, so Jupiter Flasher writes its own small MBR + FAT32 loader (`scripts/loaders/*.S`, rebuild with
   `scripts/build_loaders.sh`) that loads `NTLDR`. The stick gets the CD contents plus a `$WIN_NT$.~BT` copy of `I386`,
@@ -49,7 +55,7 @@ Raw device access needs root on macOS, so DD / Test / Clone ask for your adminis
     boot files, same effect as pressing F7 at setup start.
   * *Storage driver* – pick a text-mode (F6) driver folder (with `txtsetup.oem`) to be loaded automatically, e.g. Intel
     AHCI/RAID. Written as `$OEM$\TEXTMODE` + `[MassStorageDrivers]` in `winnt.sif`.
-* **Checksum** – paste the SHA-256 from the download page and compare it with the ISO before flashing.
+* **Checksum** – paste the hash from the download page (MD5, SHA-1 or SHA-256 – detected from its length) and compare it with the ISO before flashing. MD5 and SHA-1 only catch corrupt downloads, not tampering; prefer SHA-256 when it's offered.
 * Settings and recent ISOs are remembered; `.iso` files can be dropped on the window or the Dock icon.
 
 ## Status / known limits
@@ -65,7 +71,7 @@ Raw device access needs root on macOS, so DD / Test / Clone ask for your adminis
 
     swift run jupiterflash-cli list
     swift run jupiterflash-cli inspect <iso>
-    swift run jupiterflash-cli sha256 <file> [expected-hash]
+    swift run jupiterflash-cli sha256|sha1|md5|hash <file> [expected-hash]
     swift run jupiterflash-cli flash <iso> <diskN> --yes [--bios] [--no-acpi] [--nt5-drivers DIR] ...
 
 ## License

@@ -26,7 +26,7 @@ private struct Preferences: Codable {
 @MainActor
 final class FlashViewModel: ObservableObject {
     enum Phase: Equatable { case idle, running, finished, failed(String), cancelled }
-    enum HashState: Equatable { case idle, computing(Double), done(String), failed(String) }
+    enum HashState: Equatable { case idle, computing(Double), done(HashAlgorithm, String), failed(String) }
 
     // Inputs
     @Published var mode: FlashMode = .windows {
@@ -54,7 +54,10 @@ final class FlashViewModel: ObservableObject {
     @Published var cloneOutput: URL?
 
     // Checksum
-    @Published var expectedHash = ""
+    @Published var expectedHash = "" {
+        didSet { if let p = Checksum.parse(expectedHash) { hashAlgorithm = p.algorithm } }   // the pasted hash's length says which one
+    }
+    @Published var hashAlgorithm: HashAlgorithm = .sha256
     @Published var hashState: HashState = .idle
     private var hashTask: Task<Void, Never>?
 
@@ -246,23 +249,24 @@ final class FlashViewModel: ObservableObject {
 
     // MARK: Checksum
 
-    /// The hash the user pasted, if it contains exactly one SHA-256.
-    var expectedParsed: String? { Checksum.parseExpected(expectedHash) }
+    /// The hash the user pasted, if it contains exactly one MD5, SHA-1 or SHA-256.
+    var expectedParsed: (algorithm: HashAlgorithm, hash: String)? { Checksum.parse(expectedHash) }
 
-    /// true = matches, false = differs, nil = nothing to compare yet
+    /// true = matches, false = differs, nil = nothing (comparable) to compare yet
     var hashMatches: Bool? {
-        guard case .done(let h) = hashState, let want = expectedParsed else { return nil }
-        return h == want
+        guard case .done(let alg, let h) = hashState, let want = expectedParsed, want.algorithm == alg else { return nil }
+        return h == want.hash
     }
 
     func computeHash() {
         guard let url = imageURL else { return }
         hashTask?.cancel()
         hashState = .computing(0)
+        let algorithm = hashAlgorithm
         hashTask = Task {
             let result: Result<String, Error> = await Task.detached(priority: .utility) {
                 do {
-                    return .success(try Checksum.sha256(of: url, progress: { f in
+                    return .success(try Checksum.compute(algorithm, of: url, progress: { f in
                         Task { @MainActor [weak self] in
                             if case .computing = self?.hashState { self?.hashState = .computing(f) }
                         }
@@ -270,7 +274,7 @@ final class FlashViewModel: ObservableObject {
                 } catch { return .failure(error) }
             }.value
             switch result {
-            case .success(let h): hashState = .done(h)
+            case .success(let h): hashState = .done(algorithm, h)
             case .failure(let e): hashState = e is CancellationError ? .idle : .failed(e.localizedDescription)
             }
         }

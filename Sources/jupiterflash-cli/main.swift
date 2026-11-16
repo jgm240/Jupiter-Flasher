@@ -9,7 +9,7 @@ func usage() -> Never {
       jupiterflash-cli inspect <iso>
       jupiterflash-cli verify <iso> <volume-path>      (read-only: compare a flashed drive with the ISO)
       jupiterflash-cli dd <image> <diskN> --yes [--verify] [--progress-file F] [--cancel-file F]   (needs root)
-      jupiterflash-cli sha256 <file> [expected-hash]
+      jupiterflash-cli sha256|sha1|md5|hash <file> [expected-hash]   (hash: algorithm follows the expected hash's length)
       jupiterflash-cli badblocks <diskN> --yes [--quick] [--progress-file F] [--cancel-file F]   (DESTROYS data; needs root)
       jupiterflash-cli clone <diskN> <out.img> --yes [--uid N] [--progress-file F] [--cancel-file F]   (needs root)
       jupiterflash-cli driverinfo <folder>      (check an XP text-mode driver folder)
@@ -77,17 +77,25 @@ func run() async throws {
             FileHandle.standardError.write(Data("ERROR: \(msg)\n".utf8))
             exit(1)
         }
-    case "sha256":
+    case "sha256", "sha1", "md5", "hash":
+        // hash <file> [expected]   (algorithm picked from the expected value's length, else SHA-256)
+        // sha256|sha1|md5 <file> [expected]
         guard args.count >= 2 else { usage() }
+        var algorithm: HashAlgorithm = HashAlgorithm(rawValue: args[0]) ?? .sha256
+        let expected = args.count >= 3 ? Checksum.parse(args[2]) : nil
+        if args.count >= 3 {
+            guard let e = expected else { print("Expected value isn't a single MD5, SHA-1 or SHA-256 hash."); exit(2) }
+            if args[0] == "hash" { algorithm = e.algorithm }
+            else if e.algorithm != algorithm { print("Expected value is \(e.algorithm.displayName), not \(algorithm.displayName)."); exit(2) }
+        }
         var lastP = -1
-        let sum = try Checksum.sha256(of: URL(fileURLWithPath: args[1]), progress: { f in
+        let sum = try Checksum.compute(algorithm, of: URL(fileURLWithPath: args[1]), progress: { f in
             let p = Int(f * 100); if p != lastP, args.count < 3 { lastP = p; FileHandle.standardError.write(Data("\r\(p)%".utf8)) }
         })
         print(sum)
-        if args.count >= 3 {
-            guard let want = Checksum.parseExpected(args[2]) else { print("Expected value isn't a single SHA-256 hash."); exit(2) }
-            print(want == sum ? "MATCH" : "MISMATCH (expected \(want))")
-            exit(want == sum ? 0 : 1)
+        if let want = expected {
+            print(want.hash == sum ? "MATCH (\(algorithm.displayName))" : "MISMATCH (expected \(want.hash))")
+            exit(want.hash == sum ? 0 : 1)
         }
     case "driverinfo":
         guard args.count >= 2 else { usage() }

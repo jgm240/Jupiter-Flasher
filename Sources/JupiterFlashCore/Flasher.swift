@@ -277,10 +277,14 @@ public enum Flasher {
             }
 
             // 5b. Windows customizations ------------------------------------------------
-            if let c = o.customization, !c.isEmpty {
-                let xml = c.unattendXML(architecture: info.architecture)
-                try xml.write(to: target.appendingPathComponent("autounattend.xml"), atomically: false, encoding: .utf8)
-                log("Wrote autounattend.xml (\(info.architecture)) with the selected Windows customizations")
+            if let chosen = o.customization, !chosen.isEmpty {
+                let (c, dropped) = chosen.applicable(to: info)
+                if !dropped.isEmpty { log("Skipped for \(info.windowsName ?? "this Windows") (not applicable): \(dropped.joined(separator: ", ")).") }
+                if !c.isEmpty {
+                    let xml = c.unattendXML(architecture: info.architecture)
+                    try xml.write(to: target.appendingPathComponent("autounattend.xml"), atomically: false, encoding: .utf8)
+                    log("Wrote autounattend.xml (\(info.architecture)) with the selected Windows customizations")
+                }
             }
 
             // 6. Verify -----------------------------------------------------------------
