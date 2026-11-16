@@ -1,6 +1,6 @@
 # Jupiter Flasher
 
-A Rufus-style USB creator for macOS, written in SwiftUI. Jupiter is the Roman god of thunder – and you *flash* a stick. ⚡
+A Rufus-style USB creator for macOS, written in SwiftUI.
 
 Makes bootable Windows USB drives from an ISO (Windows 11/10/8/7/Vista and XP/2000/2003), writes hybrid images
 byte-for-byte, tests drives for fake capacity and bad blocks, and clones drives to image files.
